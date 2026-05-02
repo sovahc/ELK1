@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import re
 import sys
 import time
-from book import Book
+from book import Book, _split_text
 
 # Электронный Литературный Критик Научной Фантастики (ЭЛК_НФ)
 # Разбивает произведение на части по нескольку глав и оценивает его по набору критериев.
@@ -265,13 +265,20 @@ def analyze_book(path):
     for title, text in book.chapters:
         if not text.strip():
             continue
-        
-        if accumulated_text and len(accumulated_text) + len(text) > CHUNK_FOR_LLM:
-            accumulated_text = analyze_chunk(accumulated_text, current_chapters, book.metadata)
-            current_chapters = []
             
-        accumulated_text += f"\n\n[CHAPTER: {title}]\n{text}"
-        current_chapters.append(title)
+        # Fallback: разбиваем гигантские главы на части
+        chapters_to_process = [(title, text)]
+        if len(text) > CHUNK_FOR_LLM:
+            parts = _split_text(text, desired=CHUNK_FOR_LLM, max_limit=int(CHUNK_FOR_LLM * 1.5))
+            chapters_to_process = [(f"{title} (part {i+1})", part) for i, part in enumerate(parts)]
+            
+        for sub_title, sub_text in chapters_to_process:
+            if accumulated_text and len(accumulated_text) + len(sub_text) > CHUNK_FOR_LLM:
+                accumulated_text = analyze_chunk(accumulated_text, current_chapters, book.metadata)
+                current_chapters = []
+                
+            accumulated_text += f"\n\n[CHAPTER: {sub_title}]\n{sub_text}"
+            current_chapters.append(sub_title)
             
     if accumulated_text.strip():
         analyze_chunk(accumulated_text, current_chapters, book.metadata)
